@@ -5,20 +5,17 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { model, messages } = body;
 
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_OLLAMA_HOST}/api/chat`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          stream: true, // Enable streaming
-        }),
+    const response = await fetch(`${process.env.OLLAMA_HOST}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true, // Enable streaming
+      }),
+    });
 
     // Create a TransformStream for handling the response
     const encoder = new TextEncoder();
