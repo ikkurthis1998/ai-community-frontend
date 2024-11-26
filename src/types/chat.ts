@@ -1,12 +1,14 @@
-export type Message = {
+export interface Message {
+  id?: string;
+  chatId: string;
   role: "assistant" | "user";
   content: string;
-};
+  timestamp: number;
+}
 
-export type Chat = {
-  id: string;
+export interface Chat {
+  id?: string;
   title: string;
-  messages: Message[];
   model: string;
   timestamp: number;
-};
+}
