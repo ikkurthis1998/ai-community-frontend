@@ -13,22 +13,24 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model,
         messages,
-        stream: true, // Enable streaming
+        stream: true,
       }),
     });
 
-    // Create a TransformStream for handling the response
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
         const text = decoder.decode(chunk);
-        // Ollama sends data in the format: "event: data\ndata: {...}\n\n"
+
         const lines = text.split("\n");
+
         const parsedLines = lines
-          .filter((line) => line.startsWith("data: "))
-          .map((line) => JSON.parse(line.slice(6)));
+          .filter((line) => line.trim() !== "")
+          .map((line) => {
+            return JSON.parse(line);
+          });
 
         for (const parsedLine of parsedLines) {
           controller.enqueue(encoder.encode(JSON.stringify(parsedLine) + "\n"));
@@ -37,6 +39,7 @@ export async function POST(req: Request) {
     });
 
     const readableStream = response.body!.pipeThrough(transformStream);
+
     return new Response(readableStream, {
       headers: {
         "Content-Type": "text/event-stream",
@@ -45,6 +48,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
+    console.error("Error occurred:", error);
     return NextResponse.json(
       { error: `Failed to fetch response: ${error}` },
       { status: 500 },
@@ -52,4 +56,4 @@ export async function POST(req: Request) {
   }
 }
 
-export const runtime = "edge"; // Enable edge runtime for better streaming support
+export const runtime = "edge";

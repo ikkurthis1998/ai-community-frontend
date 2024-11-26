@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Chat, Message } from "@/types/chat";
+import Sidebar from "./Sidebar";
+import ChatWindow from "./ChatWindow";
+import MessageForm from "./MessageForm";
 
 export default function ChatComponent(): JSX.Element {
   const [input, setInput] = useState("");
@@ -15,310 +18,248 @@ export default function ChatComponent(): JSX.Element {
   const [streamingContent, setStreamingContent] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const currentChat = chats.find((chat) => chat.id === currentChatId);
+  console.log("Component rendered");
 
-  useEffect(() => {
-    console.log("Current chats:", chats);
-    console.log("Current chat ID:", currentChatId);
-  }, [chats, currentChatId]);
+  const currentChat = currentChatId
+    ? chats.find((chat) => chat.id === currentChatId)
+    : null;
+  console.log("Current chat:", currentChat);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = { role: "user", content: input };
-    const chatId = currentChatId || Date.now().toString();
-
-    // First, add the user message to the chat
-    setChats((prevChats) => {
-      if (!currentChatId) {
-        // Create new chat
-        const newChat: Chat = {
-          id: chatId,
-          title: input.slice(0, 30) + "...",
-          messages: [userMessage],
-          model: "llama3.2",
-          timestamp: Date.now(),
-        };
-        return [newChat, ...prevChats];
-      } else {
-        // Update existing chat
-        return prevChats.map((chat) =>
-          chat.id === currentChatId
-            ? {
-                ...chat,
-                messages: [...chat.messages, userMessage],
-              }
-            : chat,
-        );
-      }
-    });
-
-    // Set current chat ID if it's a new chat
-    if (!currentChatId) {
-      setCurrentChatId(chatId);
-    }
-
-    setInput("");
-    setIsLoading(true);
-    setStreamingContent("");
-
+  const safeParseJSON = (jsonString: string) => {
     try {
-      // Get current messages for the API request
-      const currentMessages = !currentChatId
-        ? [userMessage]
-        : [
-            ...chats.find((chat) => chat.id === currentChatId)!.messages,
-            userMessage,
-          ];
-
-      abortControllerRef.current = new AbortController();
-
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "llama3.2",
-          messages: currentMessages,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No reader available");
-
-      let accumulatedContent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split("\n").filter(Boolean);
-
-        for (const line of lines) {
-          try {
-            const parsed = JSON.parse(line);
-            if (parsed.done) continue;
-
-            const content = parsed.message?.content || "";
-            accumulatedContent += content;
-            setStreamingContent(accumulatedContent);
-          } catch (error) {
-            console.error("Error parsing line:", error);
-          }
-        }
-      }
-
-      // After streaming is complete, update the chat with the AI response
-      console.log("Accumulated content:", accumulatedContent); // Debug log
-
-      const assistantMessage: Message = {
-        role: "assistant",
-        content: accumulatedContent,
-      };
-
-      setChats((prevChats) => {
-        const updatedChats = prevChats.map((chat) => {
-          if (chat.id === chatId) {
-            console.log("Updating chat:", chat.id); // Debug log
-            return {
-              ...chat,
-              messages: [...chat.messages, assistantMessage],
-            };
-          }
-          return chat;
-        });
-        console.log("Updated chats:", updatedChats); // Debug log
-        return updatedChats;
-      });
-    } catch (err) {
-      const error = err as Error;
-      if (error.name === "AbortError") {
-        console.log("Request aborted");
-      } else {
-        console.error("Failed to fetch response:", error);
-      }
-    } finally {
-      setIsLoading(false);
-      setStreamingContent("");
-      abortControllerRef.current = null;
+      console.log("Parsing JSON string:", jsonString);
+      return JSON.parse(jsonString);
+    } catch (error) {
+      console.error("JSON parse error:", error);
+      return null;
     }
   };
+
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      console.log("Form submitted with input:", input);
+      if (!input.trim() || isLoading) {
+        console.log("Input is empty or loading is in progress, returning.");
+        return;
+      }
+
+      const userMessage: Message = { role: "user", content: input };
+      const chatId = currentChatId || Date.now().toString();
+      console.log("User message:", userMessage);
+      console.log("Chat ID:", chatId);
+
+      // First, add the user message to the chat
+      setChats((prevChats) => {
+        if (!currentChatId) {
+          const newChat: Chat = {
+            id: chatId,
+            title: input.slice(0, 30) + "...",
+            messages: [userMessage],
+            model: "llama3.2",
+            timestamp: Date.now(),
+          };
+          console.log("Creating a new chat:", newChat);
+          return [newChat, ...prevChats];
+        } else {
+          console.log("Adding message to existing chat:", currentChatId);
+          return prevChats.map((chat) =>
+            chat.id === currentChatId
+              ? {
+                  ...chat,
+                  messages: chat.messages
+                    ? [...chat.messages, userMessage]
+                    : [userMessage],
+                }
+              : chat,
+          );
+        }
+      });
+
+      if (!currentChatId) {
+        console.log("Setting current chat ID to:", chatId);
+        setCurrentChatId(chatId);
+      }
+
+      setInput("");
+      setIsLoading(true);
+      setStreamingContent("");
+      console.log(
+        "Reset input, set loading to true and cleared streaming content.",
+      );
+
+      try {
+        const currentMessages = !currentChatId
+          ? [userMessage]
+          : [
+              ...(chats.find((chat) => chat.id === currentChatId)?.messages ||
+                []),
+              userMessage,
+            ];
+        console.log("Current messages for API call:", currentMessages);
+
+        abortControllerRef.current = new AbortController();
+        console.log("AbortController initialized.");
+
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "llama3.2",
+            messages: currentMessages,
+          }),
+          signal: abortControllerRef.current.signal,
+        });
+        console.log("API call made.");
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        console.log("Response received:", response);
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("No reader available");
+        console.log("Reader created.");
+
+        let accumulatedContent = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          console.log("Chunk received:", value);
+
+          const chunk = new TextDecoder().decode(value);
+          const lines = chunk.split("\n").filter(Boolean);
+          console.log("Decoded lines:", lines);
+
+          for (const line of lines) {
+            const parsed = safeParseJSON(line);
+            console.log("Parsed line:", parsed);
+            if (parsed && !parsed.done) {
+              const content = parsed.message?.content || "";
+              accumulatedContent += content;
+              setStreamingContent(accumulatedContent);
+              console.log("Updated streaming content:", accumulatedContent);
+            }
+          }
+        }
+
+        const assistantMessage: Message = {
+          role: "assistant",
+          content: accumulatedContent,
+        };
+        console.log("Assistant message:", assistantMessage);
+
+        setChats((prevChats) =>
+          prevChats.map((chat) =>
+            chat.id === chatId
+              ? { ...chat, messages: [...chat.messages, assistantMessage] }
+              : chat,
+          ),
+        );
+        console.log("Chat updated with assistant message.");
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          console.error("Failed to fetch response:", error);
+        }
+      } finally {
+        setIsLoading(false);
+        console.log(
+          "Fetch completed. Loading set to false and streaming content cleared.",
+        );
+      }
+    },
+    [input, isLoading, currentChatId, chats, setChats, setCurrentChatId],
+  );
 
   const handleCancel = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+      console.log("Fetch operation aborted.");
     }
   };
 
-  const startNewChat = () => {
+  const startNewChat = useCallback(() => {
     setCurrentChatId(null);
     setInput("");
     setStreamingContent("");
     setIsLoading(false);
+    console.log("Starting a new chat session.");
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-  };
+  }, [setCurrentChatId]);
 
-  const selectChat = (chatId: string) => {
-    setCurrentChatId(chatId);
-  };
+  const selectChat = useCallback(
+    (chatId: string) => {
+      setCurrentChatId(chatId);
+      console.log("Chat selected:", chatId);
+    },
+    [setCurrentChatId],
+  );
 
-  const deleteChat = (chatId: string) => {
-    setChats((prevChats) => prevChats.filter((chat) => chat.id !== chatId));
-    if (currentChatId === chatId) {
-      setCurrentChatId(null);
+  const deleteChat = useCallback(
+    (chatId: string) => {
+      console.log("Deleting chat:", chatId);
+      setChats((prevChats) => prevChats.filter((chat) => chat.id !== chatId));
+      if (currentChatId === chatId) {
+        setCurrentChatId(null);
+        console.log("Current chat deleted, resetting current chat ID.");
+      }
+    },
+    [currentChatId, setChats, setCurrentChatId],
+  );
+
+  useEffect(() => {
+    if (currentChatId && !currentChat) {
+      const selectedChat = chats.find((chat) => chat.id === currentChatId);
+      if (selectedChat) {
+        setCurrentChatId(selectedChat.id);
+      }
     }
-  };
+  }, [currentChatId, chats, currentChat]);
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-900">
-      {/* Sidebar */}
-      <div className="w-80 border-r border-zinc-200 dark:border-zinc-800 flex flex-col">
-        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
-          <button
-            onClick={startNewChat}
-            className="w-full px-4 py-2.5 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors duration-200 font-medium"
-          >
-            New Chat
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {chats.map((chat) => (
-            <div
-              key={chat.id}
-              className={`p-3 rounded-lg cursor-pointer flex justify-between items-center transition-colors duration-200 ${
-                chat.id === currentChatId
-                  ? "bg-zinc-200 dark:bg-zinc-800"
-                  : "hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
-              }`}
-              onClick={() => selectChat(chat.id)}
-            >
-              <span className="truncate flex-1 text-sm">{chat.title}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteChat(chat.id);
-                }}
-                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 p-1"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Chat Area */}
+      <Sidebar
+        chats={chats}
+        currentChatId={currentChatId}
+        startNewChat={startNewChat}
+        selectChat={selectChat}
+        deleteChat={deleteChat}
+      />
       <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900">
         {currentChat ? (
           <>
             <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
               <h1 className="text-lg font-medium">{currentChat.title}</h1>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
-              {currentChat.messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-lg px-4 py-3 ${
-                      message.role === "user"
-                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-                    }`}
-                  >
-                    <div className="text-xs font-medium mb-1 opacity-70">
-                      {message.role === "user" ? "You" : "AI"}
-                    </div>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                      {message.content}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Streaming message */}
-              {streamingContent && (
-                <div className="flex justify-start">
-                  <div className="max-w-[80%] rounded-lg px-4 py-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
-                    <div className="text-xs font-medium mb-1 opacity-70">
-                      AI
-                    </div>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                      {streamingContent}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
-              <form onSubmit={handleSubmit} className="flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="flex-1 px-4 py-2.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:focus:ring-zinc-400 transition-all duration-200"
-                  placeholder="Type your message..."
-                  disabled={isLoading}
-                />
-                {isLoading ? (
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    className="px-6 py-2.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 font-medium"
-                  >
-                    Cancel
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    className="px-6 py-2.5 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium"
-                  >
-                    Send
-                  </button>
-                )}
-              </form>
-            </div>
+            <ChatWindow
+              messages={currentChat.messages}
+              streamingContent={streamingContent}
+            />
+            <MessageForm
+              input={input}
+              setInput={setInput}
+              handleSubmit={handleSubmit}
+              handleCancel={handleCancel}
+              isLoading={isLoading}
+            />
           </>
         ) : (
           <div className="flex-1 flex flex-col">
             <div className="flex-1 flex items-center justify-center text-zinc-500 dark:text-zinc-400">
-              Select a chat or start a new one
+              Start a new chat
             </div>
-            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
-              <form onSubmit={handleSubmit} className="flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="flex-1 px-4 py-2.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:focus:ring-zinc-400 transition-all duration-200"
-                  placeholder="Type your message to start a new chat..."
-                  disabled={isLoading}
-                />
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium"
-                  disabled={isLoading}
-                >
-                  Send
-                </button>
-              </form>
-            </div>
+            <MessageForm
+              input={input}
+              setInput={setInput}
+              handleSubmit={handleSubmit}
+              handleCancel={handleCancel}
+              isLoading={isLoading}
+            />
           </div>
         )}
       </div>
