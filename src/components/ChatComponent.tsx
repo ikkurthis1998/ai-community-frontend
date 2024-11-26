@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Chat, Message } from "@/types/chat";
 
@@ -17,6 +17,11 @@ export default function ChatComponent(): JSX.Element {
 
   const currentChat = chats.find((chat) => chat.id === currentChatId);
 
+  useEffect(() => {
+    console.log("Current chats:", chats);
+    console.log("Current chat ID:", currentChatId);
+  }, [chats, currentChatId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -24,27 +29,34 @@ export default function ChatComponent(): JSX.Element {
     const userMessage: Message = { role: "user", content: input };
     const chatId = currentChatId || Date.now().toString();
 
-    if (!currentChatId) {
-      const newChat: Chat = {
-        id: chatId,
-        title: input.slice(0, 30) + "...",
-        messages: [userMessage],
-        model: "llama3.2",
-        timestamp: Date.now(),
-      };
-      setChats((prevChats) => [newChat, ...prevChats]);
-      setCurrentChatId(chatId);
-    } else {
-      setChats((prevChats) =>
-        prevChats.map((chat) =>
+    // First, add the user message to the chat
+    setChats((prevChats) => {
+      if (!currentChatId) {
+        // Create new chat
+        const newChat: Chat = {
+          id: chatId,
+          title: input.slice(0, 30) + "...",
+          messages: [userMessage],
+          model: "llama3.2",
+          timestamp: Date.now(),
+        };
+        return [newChat, ...prevChats];
+      } else {
+        // Update existing chat
+        return prevChats.map((chat) =>
           chat.id === currentChatId
             ? {
                 ...chat,
                 messages: [...chat.messages, userMessage],
               }
             : chat,
-        ),
-      );
+        );
+      }
+    });
+
+    // Set current chat ID if it's a new chat
+    if (!currentChatId) {
+      setCurrentChatId(chatId);
     }
 
     setInput("");
@@ -52,7 +64,8 @@ export default function ChatComponent(): JSX.Element {
     setStreamingContent("");
 
     try {
-      const messages = !currentChatId
+      // Get current messages for the API request
+      const currentMessages = !currentChatId
         ? [userMessage]
         : [
             ...chats.find((chat) => chat.id === currentChatId)!.messages,
@@ -68,10 +81,14 @@ export default function ChatComponent(): JSX.Element {
         },
         body: JSON.stringify({
           model: "llama3.2",
-          messages,
+          messages: currentMessages,
         }),
         signal: abortControllerRef.current.signal,
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No reader available");
@@ -99,19 +116,28 @@ export default function ChatComponent(): JSX.Element {
         }
       }
 
-      setChats((prevChats) =>
-        prevChats.map((chat) =>
-          chat.id === chatId
-            ? {
-                ...chat,
-                messages: [
-                  ...chat.messages,
-                  { role: "assistant", content: accumulatedContent },
-                ],
-              }
-            : chat,
-        ),
-      );
+      // After streaming is complete, update the chat with the AI response
+      console.log("Accumulated content:", accumulatedContent); // Debug log
+
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: accumulatedContent,
+      };
+
+      setChats((prevChats) => {
+        const updatedChats = prevChats.map((chat) => {
+          if (chat.id === chatId) {
+            console.log("Updating chat:", chat.id); // Debug log
+            return {
+              ...chat,
+              messages: [...chat.messages, assistantMessage],
+            };
+          }
+          return chat;
+        });
+        console.log("Updated chats:", updatedChats); // Debug log
+        return updatedChats;
+      });
     } catch (err) {
       const error = err as Error;
       if (error.name === "AbortError") {
