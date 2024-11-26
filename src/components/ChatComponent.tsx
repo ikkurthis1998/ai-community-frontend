@@ -28,6 +28,8 @@ export default function ChatComponent(): JSX.Element {
       e.preventDefault();
       if (!input.trim() || isLoading) return;
 
+      const userInput = input; // Store input before clearing
+      setInput(""); // Clear input immediately after submit
       setIsLoading(true);
       setStreamingContent("");
 
@@ -36,14 +38,14 @@ export default function ChatComponent(): JSX.Element {
         let activeChatId = currentChat?.id;
         if (!activeChatId) {
           activeChatId = await createNewChat(
-            input.slice(0, 30) + "...",
+            userInput.slice(0, 30) + "...",
             "llama3.2",
           );
           await selectChat(activeChatId);
         }
 
         // Add user message
-        await addMessage(activeChatId, input, "user");
+        await addMessage(activeChatId, userInput, "user");
 
         // Initialize abort controller for the fetch request
         abortControllerRef.current = new AbortController();
@@ -53,7 +55,7 @@ export default function ChatComponent(): JSX.Element {
           role,
           content,
         }));
-        currentMessages.push({ role: "user", content: input });
+        currentMessages.push({ role: "user", content: userInput });
 
         // Make API call
         const response = await fetch("/api/chat", {
@@ -106,7 +108,6 @@ export default function ChatComponent(): JSX.Element {
           console.error("Error during chat:", error);
         }
       } finally {
-        setInput("");
         setIsLoading(false);
         setStreamingContent("");
       }
@@ -128,15 +129,16 @@ export default function ChatComponent(): JSX.Element {
     }
   };
 
-  const startNewChat = useCallback(() => {
+  const startNewChat = useCallback(async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    selectChat("");
+    const newChatId = await createNewChat("New Chat", "llama3.2");
+    await selectChat(newChatId);
     setInput("");
     setStreamingContent("");
     setIsLoading(false);
-  }, [selectChat]);
+  }, [selectChat, createNewChat]);
 
   if (loading) {
     return (
