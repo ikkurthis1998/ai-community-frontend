@@ -35,13 +35,17 @@ export default function Sidebar({
                 ? "bg-zinc-200 dark:bg-zinc-800"
                 : "hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
             }`}
-            onClick={() => selectChat(chat.id)}
+            onClick={() => {
+              if (chat.id !== undefined && chat.id !== "") {
+                selectChat(chat.id as string);
+              }
+            }}
           >
             <span className="truncate flex-1 text-sm">{chat.title}</span>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                deleteChat(chat.id);
+                deleteChat(chat.id as string);
               }}
               className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 p-1"
             >
