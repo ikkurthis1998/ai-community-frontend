@@ -39,16 +39,20 @@ export default function ChatComponent(): JSX.Element {
         // Initialize abort controller
         abortControllerRef.current = new AbortController();
 
-        // Make API call
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "llama3.2",
-            messages: updatedMessages,
-          }),
-          signal: abortControllerRef.current.signal,
-        });
+        // Make direct API call to Ollama
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_OLLAMA_HOST}/api/chat`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "llama3.2",
+              messages: updatedMessages,
+              stream: true,
+            }),
+            signal: abortControllerRef.current.signal,
+          },
+        );
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
