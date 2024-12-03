@@ -1,28 +1,10 @@
+import { useEffect } from "react";
 import { marked } from "marked";
 import hljs from "highlight.js";
 import "highlight.js/styles/github-dark.css";
 
-// Configure marked with highlighting
-const renderer = new marked.Renderer();
-
-renderer.code = function ({ text, lang, escaped }) {
-  const validLanguage = hljs.getLanguage(lang || "") ? lang : "plaintext";
-  const highlightedCode = validLanguage
-    ? hljs.highlight(text, { language: validLanguage }).value
-    : escaped;
-
-  return `<pre><code class="hljs language-${validLanguage}">${highlightedCode}</code></pre>`;
-};
-
-marked.use({
-  renderer,
-  gfm: true,
-  breaks: true,
-});
-type Role = "assistant" | "user";
-
 interface Message {
-  role: Role;
+  role: "assistant" | "user";
   content: string;
 }
 
@@ -35,61 +17,82 @@ export default function ChatWindow({
   messages,
   streamingContent,
 }: ChatWindowProps) {
-  const renderMarkdown = (content: string) => {
+  useEffect(() => {
+    const renderer = new marked.Renderer();
+
+    renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
+      const validLanguage = hljs.getLanguage(lang || "") ? lang : "plaintext";
+      const highlightedCode = hljs.highlight(text, {
+        language: validLanguage || "plaintext",
+      }).value;
+
+      return `
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-language">${validLanguage}</span>
+            <button class="copy-button" data-code="${encodeURIComponent(text)}">Copy</button>
+          </div>
+          <pre><code class="hljs language-${validLanguage}">${highlightedCode}</code></pre>
+        </div>
+      `;
+    };
+
+    marked.setOptions({
+      renderer,
+      gfm: true,
+      breaks: true,
+    });
+  }, []);
+
+  const handleCopy = async (code: string) => {
     try {
-      const html = marked.parse(content);
-      return (
-        <div
-          className="prose dark:prose-invert prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      );
-    } catch (error) {
-      console.error("Markdown parsing error:", error);
-      return <div className="whitespace-pre-wrap">{content}</div>;
+      await navigator.clipboard.writeText(code);
+      // Could add a toast notification here
+    } catch (err) {
+      console.error("Failed to copy code:", err);
     }
   };
 
-  return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-6">
-      {messages.map((message, index) => (
-        <div
-          key={index}
-          className={`flex ${
-            message.role === "user" ? "justify-end" : "justify-start"
-          }`}
-        >
-          <div
-            className={`max-w-[80%] rounded-lg px-4 py-3 ${
-              message.role === "user"
-                ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-            }`}
-          >
-            <div className="text-xs font-medium mb-1 opacity-70">
-              {message.role === "user" ? "You" : "AI"}
-            </div>
-            <div className="text-sm leading-relaxed">
-              {message.role === "assistant" ? (
-                renderMarkdown(message.content)
-              ) : (
-                <div className="whitespace-pre-wrap">{message.content}</div>
-              )}
-            </div>
+  const renderMessage = (content: string, role: string) => {
+    const html = marked(content);
+
+    return (
+      <div
+        className={`flex ${role === "user" ? "justify-end" : "justify-start"} mb-4`}
+      >
+        <div className={`max-w-[80%] rounded-lg p-4 bg-zinc-800 text-zinc-100`}>
+          <div className="mb-2 text-sm font-medium opacity-70">
+            {role === "user" ? "You" : "AI"}
           </div>
+          <div
+            className={`prose ${role === "user" ? "prose-invert" : "dark:prose-invert"} prose-sm max-w-none`}
+            dangerouslySetInnerHTML={{ __html: html }}
+            onClick={(e) => {
+              const target = e.target as HTMLElement;
+              if (target.classList.contains("copy-button")) {
+                e.preventDefault();
+                const code = decodeURIComponent(target.dataset.code || "");
+                handleCopy(code);
+                target.textContent = "Copied!";
+                setTimeout(() => {
+                  target.textContent = "Copy";
+                }, 2000);
+              }
+            }}
+          />
         </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4">
+      {messages.map((message, index) => (
+        <div key={index}>{renderMessage(message.content, message.role)}</div>
       ))}
 
-      {/* Streaming message */}
       {streamingContent && (
-        <div className="flex justify-start">
-          <div className="max-w-[80%] rounded-lg px-4 py-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
-            <div className="text-xs font-medium mb-1 opacity-70">AI</div>
-            <div className="text-sm leading-relaxed">
-              {renderMarkdown(streamingContent)}
-            </div>
-          </div>
-        </div>
+        <div>{renderMessage(streamingContent, "assistant")}</div>
       )}
     </div>
   );
