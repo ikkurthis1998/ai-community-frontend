@@ -18,3 +18,58 @@ body {
     color: var(--foreground);
     background: var(--background);
 }
+
+.prose pre {
+    background-color: #1e1e1e;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+}
+
+.prose code {
+    background-color: rgba(125, 125, 125, 0.1);
+    padding: 0.2em 0.4em;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+}
+
+.prose pre code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+}
+
+.prose a {
+    color: #3b82f6;
+    text-decoration: underline;
+}
+
+.dark .prose a {
+    color: #60a5fa;
+}
+
+.prose img {
+    max-width: 100%;
+    height: auto;
+}
+
+.prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+}
+
+.prose th,
+.prose td {
+    border: 1px solid #e5e7eb;
+    padding: 0.5em 1em;
+}
+
+.dark .prose th,
+.dark .prose td {
+    border-color: #374151;
+}
+
+.prose th {
+    background-color: rgba(125, 125, 125, 0.1);
+}

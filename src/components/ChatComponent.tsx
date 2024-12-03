@@ -1,23 +1,18 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useChat } from "@/hooks/useChat";
-import Sidebar from "./Sidebar";
 import ChatWindow from "./ChatWindow";
 import MessageForm from "./MessageForm";
 
-export default function ChatComponent(): JSX.Element {
-  const {
-    chats,
-    currentChat,
-    messages,
-    loading,
-    selectChat,
-    createNewChat,
-    addMessage,
-    deleteChat,
-  } = useChat();
+type Role = "assistant" | "user";
 
+interface Message {
+  role: Role;
+  content: string;
+}
+
+export default function ChatComponent(): JSX.Element {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
@@ -28,34 +23,21 @@ export default function ChatComponent(): JSX.Element {
       e.preventDefault();
       if (!input.trim() || isLoading) return;
 
-      const userInput = input; // Store input before clearing
-      setInput(""); // Clear input immediately after submit
+      const userInput = input;
+      setInput("");
       setIsLoading(true);
       setStreamingContent("");
 
       try {
-        // If no current chat, create a new one
-        let activeChatId = currentChat?.id;
-        if (!activeChatId) {
-          activeChatId = await createNewChat(
-            userInput.slice(0, 30) + "...",
-            "llama3.2",
-          );
-          await selectChat(activeChatId);
-        }
-
         // Add user message
-        await addMessage(activeChatId, userInput, "user");
+        const updatedMessages: Message[] = [
+          ...messages,
+          { role: "user", content: userInput },
+        ];
+        setMessages(updatedMessages);
 
-        // Initialize abort controller for the fetch request
+        // Initialize abort controller
         abortControllerRef.current = new AbortController();
-
-        // Prepare messages for API call
-        const currentMessages = messages.map(({ role, content }) => ({
-          role,
-          content,
-        }));
-        currentMessages.push({ role: "user", content: userInput });
 
         // Make API call
         const response = await fetch("/api/chat", {
@@ -63,7 +45,7 @@ export default function ChatComponent(): JSX.Element {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "llama3.2",
-            messages: currentMessages,
+            messages: updatedMessages,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -72,7 +54,6 @@ export default function ChatComponent(): JSX.Element {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        // Handle streaming response
         const reader = response.body?.getReader();
         if (!reader) throw new Error("No reader available");
 
@@ -100,7 +81,10 @@ export default function ChatComponent(): JSX.Element {
         }
 
         // Add assistant's complete response
-        await addMessage(activeChatId, accumulatedContent, "assistant");
+        setMessages([
+          ...updatedMessages,
+          { role: "assistant" as const, content: accumulatedContent },
+        ]);
       } catch (error) {
         if ((error as Error).name === "AbortError") {
           console.log("Request aborted");
@@ -112,15 +96,7 @@ export default function ChatComponent(): JSX.Element {
         setStreamingContent("");
       }
     },
-    [
-      input,
-      isLoading,
-      currentChat,
-      messages,
-      createNewChat,
-      selectChat,
-      addMessage,
-    ],
+    [input, isLoading, messages],
   );
 
   const handleCancel = () => {
@@ -129,66 +105,35 @@ export default function ChatComponent(): JSX.Element {
     }
   };
 
-  const startNewChat = useCallback(async () => {
+  const clearChat = () => {
+    setMessages([]);
+    setStreamingContent("");
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    const newChatId = await createNewChat("New Chat", "llama3.2");
-    await selectChat(newChatId);
-    setInput("");
-    setStreamingContent("");
     setIsLoading(false);
-  }, [selectChat, createNewChat]);
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-900">
-        <div className="text-zinc-500 dark:text-zinc-400">Loading...</div>
-      </div>
-    );
-  }
+  };
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-900">
-      <Sidebar
-        chats={chats}
-        currentChatId={currentChat?.id || null}
-        startNewChat={startNewChat}
-        selectChat={selectChat}
-        deleteChat={deleteChat}
-      />
       <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900">
-        {currentChat ? (
-          <>
-            <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
-              <h1 className="text-lg font-medium">{currentChat.title}</h1>
-            </div>
-            <ChatWindow
-              messages={messages}
-              streamingContent={streamingContent}
-            />
-            <MessageForm
-              input={input}
-              setInput={setInput}
-              handleSubmit={handleSubmit}
-              handleCancel={handleCancel}
-              isLoading={isLoading}
-            />
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col">
-            <div className="flex-1 flex items-center justify-center text-zinc-500 dark:text-zinc-400">
-              Start a new chat
-            </div>
-            <MessageForm
-              input={input}
-              setInput={setInput}
-              handleSubmit={handleSubmit}
-              handleCancel={handleCancel}
-              isLoading={isLoading}
-            />
-          </div>
-        )}
+        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
+          <h1 className="text-lg font-medium">Chat</h1>
+          <button
+            onClick={clearChat}
+            className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
+          >
+            Clear Chat
+          </button>
+        </div>
+        <ChatWindow messages={messages} streamingContent={streamingContent} />
+        <MessageForm
+          input={input}
+          setInput={setInput}
+          handleSubmit={handleSubmit}
+          handleCancel={handleCancel}
+          isLoading={isLoading}
+        />
       </div>
     </div>
   );
