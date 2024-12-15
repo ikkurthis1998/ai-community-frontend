@@ -3,6 +3,10 @@
 import { useState, useRef, useCallback } from "react";
 import ChatWindow from "./ChatWindow";
 import MessageForm from "./MessageForm";
+import { ModelOption } from "@/types/chat";
+import { modelOptions } from "@/config/models";
+import SettingsBar from "./SettingsBar";
+import ErrorMessage from "./ErrorMessage";
 
 type Role = "assistant" | "user";
 
@@ -16,6 +20,10 @@ export default function ChatComponent(): JSX.Element {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [selectedModel, setSelectedModel] = useState<ModelOption>(
+    modelOptions[0],
+  );
+  const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleSubmit = useCallback(
@@ -23,29 +31,28 @@ export default function ChatComponent(): JSX.Element {
       e.preventDefault();
       if (!input.trim() || isLoading) return;
 
+      setError(null);
       const userInput = input;
       setInput("");
       setIsLoading(true);
       setStreamingContent("");
 
       try {
-        // Add user message
         const updatedMessages: Message[] = [
           ...messages,
           { role: "user", content: userInput },
         ];
         setMessages(updatedMessages);
 
-        // Initialize abort controller
         abortControllerRef.current = new AbortController();
 
-        // Make API call
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "llama3.2",
+            model: selectedModel.modelId,
             messages: updatedMessages,
+            provider: selectedModel.provider,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -64,31 +71,43 @@ export default function ChatComponent(): JSX.Element {
           if (done) break;
 
           const chunk = new TextDecoder().decode(value);
-          const lines = chunk.split("\n").filter(Boolean);
+          const lines = chunk.split("\n\n");
 
           for (const line of lines) {
+            if (!line.trim() || !line.startsWith("data: ")) continue;
+
             try {
-              const parsed = JSON.parse(line);
-              if (parsed && !parsed.done) {
+              const jsonStr = line.replace("data: ", "");
+              const parsed = JSON.parse(jsonStr);
+
+              if (selectedModel.provider === "vertex-ai") {
+                const content = parsed.choices?.[0]?.delta?.content || "";
+                accumulatedContent += content;
+              } else {
                 const content = parsed.message?.content || "";
                 accumulatedContent += content;
-                setStreamingContent(accumulatedContent);
               }
+
+              setStreamingContent(accumulatedContent);
             } catch (error) {
               console.error("Error parsing JSON:", error);
             }
           }
         }
 
-        // Add assistant's complete response
         setMessages([
           ...updatedMessages,
-          { role: "assistant" as const, content: accumulatedContent },
+          { role: "assistant", content: accumulatedContent },
         ]);
       } catch (error) {
         if ((error as Error).name === "AbortError") {
           console.log("Request aborted");
         } else {
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : "An unknown error occurred";
+          setError(errorMessage);
           console.error("Error during chat:", error);
         }
       } finally {
@@ -96,7 +115,7 @@ export default function ChatComponent(): JSX.Element {
         setStreamingContent("");
       }
     },
-    [input, isLoading, messages],
+    [input, isLoading, messages, selectedModel],
   );
 
   const handleCancel = () => {
@@ -117,15 +136,11 @@ export default function ChatComponent(): JSX.Element {
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-900">
       <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900">
-        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
-          <h1 className="text-lg font-medium">Chat</h1>
-          <button
-            onClick={clearChat}
-            className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
-          >
-            Clear Chat
-          </button>
-        </div>
+        <SettingsBar
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          onClearChat={clearChat}
+        />
         <ChatWindow messages={messages} streamingContent={streamingContent} />
         <MessageForm
           input={input}
@@ -134,6 +149,9 @@ export default function ChatComponent(): JSX.Element {
           handleCancel={handleCancel}
           isLoading={isLoading}
         />
+        {error && (
+          <ErrorMessage message={error} onDismiss={() => setError(null)} />
+        )}
       </div>
     </div>
   );
