@@ -126,7 +126,11 @@ export default function ChatComponent(): JSX.Element {
             Clear Chat
           </button>
         </div>
-        <ChatWindow messages={messages} streamingContent={streamingContent} />
+        <ChatWindow
+          messages={messages}
+          streamingContent={streamingContent}
+          isLoading={isLoading}
+        />
         <MessageForm
           input={input}
           setInput={setInput}
