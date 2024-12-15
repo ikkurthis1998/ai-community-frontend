@@ -29,21 +29,42 @@ export default function ChatWindow({
   }, [messages, streamingContent]);
 
   useEffect(() => {
+    hljs.configure({
+      ignoreUnescapedHTML: true,
+      languages: [
+        "javascript",
+        "typescript",
+        "python",
+        "bash",
+        "json",
+        "html",
+        "css",
+        "rust",
+        "go",
+        "java",
+        "c",
+      ],
+    });
+
     const renderer = new marked.Renderer();
 
     renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
       const validLanguage = hljs.getLanguage(lang || "") ? lang : "plaintext";
-      const highlightedCode = hljs.highlight(text, {
-        language: validLanguage || "plaintext",
-      }).value;
+      const highlightedCode = validLanguage
+        ? hljs.highlight(text, { language: validLanguage }).value
+        : text;
 
       return `
-        <div class="code-block">
-          <div class="code-header">
-            <span class="code-language">${validLanguage}</span>
-            <button class="copy-button" data-code="${encodeURIComponent(text)}">Copy</button>
+        <div class="relative my-4 rounded-lg overflow-hidden bg-[#1E1E1E]">
+          <div class="flex items-center justify-between px-4 py-2 border-b border-zinc-700">
+            <span class="text-xs font-mono text-zinc-400">${validLanguage}</span>
+            <button class="copy-button px-2 py-1 text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 rounded-md transition-colors" data-code="${encodeURIComponent(text)}">
+              Copy
+            </button>
           </div>
-          <pre><code class="hljs language-${validLanguage}">${highlightedCode}</code></pre>
+          <div class="overflow-x-auto">
+            <pre class="p-4"><code class="!bg-transparent hljs language-${validLanguage}">${highlightedCode}</code></pre>
+          </div>
         </div>
       `;
     };
@@ -55,10 +76,16 @@ export default function ChatWindow({
     });
   }, []);
 
-  const handleCopy = async (code: string) => {
+  const handleCopy = async (code: string, button: HTMLButtonElement) => {
     try {
       await navigator.clipboard.writeText(code);
-      // Could add a toast notification here
+      // Only modify the clicked button
+      button.innerHTML = "Copied!";
+      button.classList.add("text-green-400");
+      setTimeout(() => {
+        button.innerHTML = "Copy";
+        button.classList.remove("text-green-400");
+      }, 2000);
     } catch (err) {
       console.error("Failed to copy code:", err);
     }
@@ -155,11 +182,7 @@ export default function ChatWindow({
               if (target.classList.contains("copy-button")) {
                 e.preventDefault();
                 const code = decodeURIComponent(target.dataset.code || "");
-                handleCopy(code);
-                target.textContent = "Copied!";
-                setTimeout(() => {
-                  target.textContent = "Copy";
-                }, 2000);
+                handleCopy(code, target as HTMLButtonElement);
               }
             }}
           />

@@ -39,6 +39,105 @@ body {
     border-radius: 0;
 }
 
+.hljs {
+    background: transparent !important;
+    padding: 0 !important;
+    color: #d4d4d4 !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.hljs-keyword {
+    color: #569cd6;
+}
+.hljs-literal {
+    color: #569cd6;
+}
+.hljs-symbol {
+    color: #569cd6;
+}
+.hljs-name {
+    color: #569cd6;
+}
+.hljs-link {
+    color: #569cd6;
+}
+.hljs-built_in {
+    color: #4ec9b0;
+}
+.hljs-type {
+    color: #4ec9b0;
+}
+.hljs-number {
+    color: #b5cea8;
+}
+.hljs-class {
+    color: #4ec9b0;
+}
+.hljs-string {
+    color: #ce9178;
+}
+.hljs-comment {
+    color: #6a9955;
+}
+.hljs-variable {
+    color: #9cdcfe;
+}
+.hljs-template-variable {
+    color: #9cdcfe;
+}
+.hljs-attr {
+    color: #9cdcfe;
+}
+.hljs-selector-attr {
+    color: #9cdcfe;
+}
+.hljs-selector-class {
+    color: #9cdcfe;
+}
+.hljs-selector-id {
+    color: #9cdcfe;
+}
+.hljs-regexp {
+    color: #ce9178;
+}
+.hljs-punctuation {
+    color: #d4d4d4;
+}
+.hljs-operator {
+    color: #d4d4d4;
+}
+.hljs-tag {
+    color: #569cd6;
+}
+.hljs-property {
+    color: #9cdcfe;
+}
+
+pre code.hljs {
+    padding: 0;
+    white-space: pre;
+}
+
+pre::-webkit-scrollbar {
+    height: 8px;
+}
+
+pre::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+pre::-webkit-scrollbar-thumb {
+    background: #404040;
+    border-radius: 4px;
+}
+
+pre::-webkit-scrollbar-thumb:hover {
+    background: #4a4a4a;
+}
+
 .prose a {
     color: #3b82f6;
     text-decoration: underline;
