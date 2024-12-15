@@ -73,3 +73,33 @@ body {
 .prose th {
     background-color: rgba(125, 125, 125, 0.1);
 }
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+.toast-enter {
+    animation: slideIn 0.3s ease forwards;
+}
+
+.toast-exit {
+    animation: slideOut 0.3s ease forwards;
+}

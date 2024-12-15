@@ -3,20 +3,98 @@
 import { useState, useRef, useCallback } from "react";
 import ChatWindow from "./ChatWindow";
 import MessageForm from "./MessageForm";
-
-type Role = "assistant" | "user";
-
-interface Message {
-  role: Role;
-  content: string;
-}
+import { useToast } from "@/contexts/ToastContext";
+import type { ErrorMessage, Message } from "@/types/chat";
 
 export default function ChatComponent(): JSX.Element {
+  const { showToast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const createMessage = (
+    role: Message["role"],
+    content: string,
+    existingChatId?: string,
+    error?: ErrorMessage,
+  ): Message => {
+    return {
+      role,
+      content,
+      chatId: existingChatId || `chat_${Date.now()}`,
+      timestamp: Date.now(),
+      ...(error && { error }),
+    };
+  };
+
+  const handleError = useCallback(
+    (error: Error | unknown, type: ErrorMessage["type"]) => {
+      let errorMessage: ErrorMessage;
+
+      switch (type) {
+        case "api":
+          errorMessage = {
+            type: "api",
+            message: `API Error: ${error instanceof Error ? error.message : "Unknown API error"}`,
+          };
+          break;
+        case "network":
+          errorMessage = {
+            type: "network",
+            message: "Network error: Please check your internet connection",
+          };
+          break;
+        case "parsing":
+          errorMessage = {
+            type: "parsing",
+            message: "Failed to parse the response from the server",
+          };
+          break;
+        case "cancel":
+          errorMessage = {
+            type: "cancel",
+            message: "Request cancelled by user",
+          };
+          break;
+        case "model_unavailable":
+          errorMessage = {
+            type: "model_unavailable",
+            message:
+              "The AI model is currently unavailable. Please try again later.",
+          };
+          break;
+        case "empty_response":
+          errorMessage = {
+            type: "empty_response",
+            message:
+              "Received empty response from the model. Please try again.",
+          };
+          break;
+        default:
+          errorMessage = {
+            type: "unknown",
+            message: `An unexpected error occurred: ${error instanceof Error ? error.message : "Unknown error"}`,
+          };
+      }
+
+      showToast(errorMessage.message, "error");
+
+      setMessages((prev) => [
+        ...prev,
+        createMessage(
+          "error",
+          errorMessage.message,
+          prev[0]?.chatId,
+          errorMessage,
+        ),
+      ]);
+
+      return errorMessage;
+    },
+    [showToast],
+  );
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -29,17 +107,16 @@ export default function ChatComponent(): JSX.Element {
       setStreamingContent("");
 
       try {
-        // Add user message
-        const updatedMessages: Message[] = [
-          ...messages,
-          { role: "user", content: userInput },
-        ];
+        const userMessage = createMessage(
+          "user",
+          userInput,
+          messages[0]?.chatId,
+        );
+        const updatedMessages: Message[] = [...messages, userMessage];
         setMessages(updatedMessages);
 
-        // Initialize abort controller
         abortControllerRef.current = new AbortController();
 
-        // Make API call
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -48,16 +125,26 @@ export default function ChatComponent(): JSX.Element {
             messages: updatedMessages,
           }),
           signal: abortControllerRef.current.signal,
+        }).catch((error) => {
+          if (error.name === "AbortError") {
+            throw new Error("Request cancelled");
+          }
+          throw new Error("Network error");
         });
 
+        if (response.status === 503) {
+          throw new Error("model_unavailable");
+        }
+
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          throw new Error(`API returned status ${response.status}`);
         }
 
         const reader = response.body?.getReader();
-        if (!reader) throw new Error("No reader available");
+        if (!reader) throw new Error("No response stream available");
 
         let accumulatedContent = "";
+        let hasReceivedContent = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -71,32 +158,58 @@ export default function ChatComponent(): JSX.Element {
               const parsed = JSON.parse(line);
               if (parsed && !parsed.done) {
                 const content = parsed.message?.content || "";
-                accumulatedContent += content;
-                setStreamingContent(accumulatedContent);
+                if (content) {
+                  hasReceivedContent = true;
+                  accumulatedContent += content;
+                  setStreamingContent(accumulatedContent);
+                }
               }
             } catch (error) {
-              console.error("Error parsing JSON:", error);
+              handleError(error, "parsing");
+              continue;
             }
           }
         }
 
-        // Add assistant's complete response
-        setMessages([
-          ...updatedMessages,
-          { role: "assistant" as const, content: accumulatedContent },
+        if (!hasReceivedContent) {
+          throw new Error("empty_response");
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          createMessage("assistant", accumulatedContent, prev[0]?.chatId),
         ]);
       } catch (error) {
-        if ((error as Error).name === "AbortError") {
-          console.log("Request aborted");
+        if (error instanceof Error) {
+          switch (error.message) {
+            case "Request cancelled":
+              handleError(error, "cancel");
+              break;
+            case "Network error":
+              handleError(error, "network");
+              break;
+            case "model_unavailable":
+              handleError(error, "model_unavailable");
+              break;
+            case "empty_response":
+              handleError(error, "empty_response");
+              break;
+            default:
+              if (error.message.includes("API returned")) {
+                handleError(error, "api");
+              } else {
+                handleError(error, "unknown");
+              }
+          }
         } else {
-          console.error("Error during chat:", error);
+          handleError(error, "unknown");
         }
       } finally {
         setIsLoading(false);
         setStreamingContent("");
       }
     },
-    [input, isLoading, messages],
+    [input, isLoading, messages, handleError],
   );
 
   const handleCancel = () => {

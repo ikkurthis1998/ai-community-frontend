@@ -4,13 +4,8 @@ import hljs from "highlight.js";
 import "highlight.js/styles/github-dark.css";
 import LoadingDots from "./LoadingDots";
 import LlamaIcon from "./LlamaIcon";
-import FunkyUserIcon from "./FunkyUserIcon";
 import UserIcon from "./UserIcon";
-
-interface Message {
-  role: "assistant" | "user";
-  content: string;
-}
+import { ErrorMessage, Message } from "@/types/chat";
 
 interface ChatWindowProps {
   messages: Message[];
@@ -69,26 +64,91 @@ export default function ChatWindow({
     }
   };
 
-  const renderMessage = (content: string, role: string) => {
+  const renderMessage = (message: Message) => {
+    const { content, role, error } = message;
     const html = marked(content);
+
+    const getMessageStyle = (role: string, error?: ErrorMessage) => {
+      if (role === "error") {
+        switch (error?.type) {
+          case "api":
+            return "bg-red-500/10 text-red-500 border border-red-500/20";
+          case "network":
+            return "bg-orange-500/10 text-orange-500 border border-orange-500/20";
+          case "parsing":
+            return "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20";
+          case "cancel":
+            return "bg-blue-500/10 text-blue-500 border border-blue-500/20";
+          case "model_unavailable":
+            return "bg-purple-500/10 text-purple-500 border border-purple-500/20";
+          case "empty_response":
+            return "bg-gray-500/10 text-gray-500 border border-gray-500/20";
+          default:
+            return "bg-red-500/10 text-red-500 border border-red-500/20";
+        }
+      }
+      return "bg-zinc-800 text-zinc-100";
+    };
+
+    const getMessageIcon = (role: string, error?: ErrorMessage) => {
+      if (role === "error") {
+        switch (error?.type) {
+          case "api":
+            return "⚠️";
+          case "network":
+            return "🌐";
+          case "parsing":
+            return "⚙️";
+          case "cancel":
+            return "🚫";
+          case "model_unavailable":
+            return "🤖";
+          case "empty_response":
+            return "📭";
+          default:
+            return "❌";
+        }
+      }
+      return role === "user" ? "👤" : "🤖";
+    };
 
     return (
       <div
         className={`flex ${role === "user" ? "justify-end" : "justify-start"} mb-4`}
       >
-        {role === "assistant" && (
+        {role !== "user" && (
           <div className="flex items-start mr-2">
-            <div className="bg-zinc-700 rounded-lg">
-              <LlamaIcon className="text-white rounded-lg" />
+            <div
+              className={`${
+                role === "error" ? "bg-transparent p-1" : "bg-zinc-700"
+              } rounded-lg`}
+            >
+              {role === "assistant" ? (
+                <LlamaIcon className="text-white rounded-lg" />
+              ) : (
+                <span className="text-xl">{getMessageIcon(role, error)}</span>
+              )}
             </div>
           </div>
         )}
-        <div className={`max-w-[80%] rounded-lg p-4 bg-zinc-800 text-zinc-100`}>
+        <div
+          className={`max-w-[80%] rounded-lg p-4 ${getMessageStyle(role, error)}`}
+        >
           <div className="mb-2 text-sm font-medium opacity-70">
-            {role === "user" ? "You" : "AI"}
+            {role === "user"
+              ? "You"
+              : role === "error"
+                ? error?.type.toUpperCase()
+                : "AI"}
           </div>
           <div
-            className={`prose ${role === "user" ? "prose-invert" : "dark:prose-invert"} prose-sm max-w-none`}
+            className={`prose ${
+              role === "error"
+                ? "prose-sm"
+                : role === "user"
+                  ? "prose-invert"
+                  : "dark:prose-invert"
+            } prose-sm max-w-none`}
             dangerouslySetInnerHTML={{ __html: html }}
             onClick={(e) => {
               const target = e.target as HTMLElement;
@@ -117,17 +177,21 @@ export default function ChatWindow({
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto">
-      {/* Spacer div that pushes content to bottom */}
       <div className="flex-1" />
-
-      {/* Messages container */}
       <div className="p-4 space-y-4">
         {messages.map((message, index) => (
-          <div key={index}>{renderMessage(message.content, message.role)}</div>
+          <div key={index}>{renderMessage(message)}</div>
         ))}
 
         {streamingContent && (
-          <div>{renderMessage(streamingContent, "assistant")}</div>
+          <div>
+            {renderMessage({
+              role: "assistant",
+              content: streamingContent,
+              timestamp: Date.now(),
+              chatId: messages[0]?.chatId,
+            })}
+          </div>
         )}
 
         {isLoading && !streamingContent && (
